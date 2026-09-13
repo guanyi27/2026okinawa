@@ -201,7 +201,7 @@ img{display:block;}
 .settle-row{display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid rgba(255,255,255,.16);font-weight:700;}
 .settle-row:last-child{border:none;}
 .settle-row .from{color:#fff;} .settle-row .arrow{opacity:.85;} .settle-row .to{color:var(--sun);}
-.settle-row .samt{margin-left:auto;font-size:15px;font-weight:800;}
+.settle-row .samt{margin-left:auto;font-size:15px;font-weight:800;text-align:right;line-height:1.3;}
 .settle-none{padding:10px 2px;font-size:13.5px;font-weight:700;}
 
 /* day map */
@@ -272,6 +272,27 @@ img{display:block;}
 .modal .close{position:absolute;top:18px;right:20px;width:42px;height:42px;border-radius:50%;border:none;
   background:rgba(255,255,255,.2);color:#fff;font-size:22px;cursor:pointer;}
 .modal .hint{color:rgba(255,255,255,.6);font-size:11.5px;margin-top:10px;}
+
+/* currency toggle (split page) */
+.cur-toggle{display:flex;background:var(--line);border-radius:11px;padding:3px;margin-bottom:10px;}
+.cur-toggle button{flex:1;border:none;background:none;padding:9px;border-radius:9px;font-weight:800;
+  font-size:13px;color:var(--soft);cursor:pointer;transition:.15s;}
+.cur-toggle button.on{background:#fff;color:var(--coral-d);box-shadow:var(--shadow-sm);}
+
+/* split-participants checkboxes */
+.split-who-label{font-size:12px;font-weight:700;color:var(--soft);margin:2px 0 7px;}
+.part-pick{display:flex;gap:7px;margin-bottom:12px;}
+.part-pick .who-tag{flex:1;text-align:center;position:relative;}
+.part-pick .who-tag.on::after{content:"✓";position:absolute;top:-6px;right:-4px;background:var(--leaf);
+  color:#fff;width:16px;height:16px;border-radius:50%;font-size:10px;display:grid;place-items:center;font-weight:800;}
+
+/* sync status */
+.sync-badge{display:flex;align-items:center;gap:6px;justify-content:center;font-size:11.5px;color:var(--soft);
+  margin:0 16px 12px;padding:7px;background:#fff;border-radius:10px;border:1px solid var(--line);}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#ccc;}
+.sync-dot.live{background:var(--leaf);box-shadow:0 0 0 3px rgba(75,176,122,.25);animation:pulse 1.6s infinite;}
+.sync-dot.off{background:var(--coral);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
 
 /* driving carousel */
 .carousel{display:flex;gap:12px;overflow-x:auto;padding:4px 16px 12px;scroll-snap-type:x mandatory;scrollbar-width:none;}
@@ -607,14 +628,26 @@ img{display:block;}
 
 <!-- ===== PAGE: 分帳 ===== -->
 <div class="page" id="p-split">
-  <div class="pagetop"><h2>🧾 三組分帳</h2><p>誰付的、多少錢，記一筆</p></div>
+  <div class="pagetop"><h2>🧾 三組分帳</h2><p>誰付的、多少錢、誰要分攤</p></div>
+  <div class="sync-badge" id="sync-badge"><span class="sync-dot" id="sync-dot"></span><span id="sync-text">尚未連線同步</span></div>
   <div class="split-add">
     <input id="exp-desc" type="text" placeholder="項目（例：午餐、停車費、租車）">
-    <input id="exp-amt" type="number" inputmode="decimal" placeholder="金額（日圓 ¥）">
+    <div class="cur-toggle">
+      <button class="on" data-cur="JPY" onclick="pickCurrency(this)">日圓 ¥</button>
+      <button data-cur="TWD" onclick="pickCurrency(this)">台幣 NT$</button>
+    </div>
+    <input id="exp-amt" type="number" inputmode="decimal" placeholder="金額">
+    <div class="split-who-label">這筆誰付的？</div>
     <div class="who-pick">
       <span class="who-tag on" data-payer="奶家" onclick="pickPayer(this)">奶家付</span>
       <span class="who-tag" data-payer="Po家" onclick="pickPayer(this)">Po家付</span>
       <span class="who-tag" data-payer="狗狗" onclick="pickPayer(this)">狗狗付</span>
+    </div>
+    <div class="split-who-label">這筆由誰分攤？（可複選，預設全部）</div>
+    <div class="part-pick">
+      <span class="who-tag on" data-part="奶家" onclick="togglePart(this)">奶家</span>
+      <span class="who-tag on" data-part="Po家" onclick="togglePart(this)">Po家</span>
+      <span class="who-tag on" data-part="狗狗" onclick="togglePart(this)">狗狗</span>
     </div>
     <button class="addbtn" onclick="addExpense()">＋ 新增一筆</button>
   </div>
@@ -802,38 +835,73 @@ function quick(y){document.getElementById('jpy').value=y; convert('jpy');}
 
 /* ---------- split expenses ---------- */
 let payer='奶家';
+let curSel='JPY';
+const ALLGROUPS=['奶家','Po家','狗狗'];
 function pickPayer(el){document.querySelectorAll('[data-payer]').forEach(x=>x.classList.remove('on'));el.classList.add('on');payer=el.dataset.payer;}
-function getExp(){try{return JSON.parse(lsGet('expenses')||'[]');}catch(e){return [];}}
-function saveExp(a){ls('expenses',JSON.stringify(a));}
+function pickCurrency(el){document.querySelectorAll('[data-cur]').forEach(x=>x.classList.remove('on'));el.classList.add('on');curSel=el.dataset.cur;
+  document.getElementById('exp-amt').placeholder = curSel==='JPY' ? '金額（日圓）' : '金額（台幣）';
+}
+function togglePart(el){
+  el.classList.toggle('on');
+  // prevent zero participants
+  if(!document.querySelectorAll('[data-part].on').length) el.classList.add('on');
+}
+function getParticipants(){return Array.from(document.querySelectorAll('[data-part].on')).map(x=>x.dataset.part);}
+
+/* ---- data layer: local by default, swaps to Firebase once configured ---- */
+function getExp(){
+  if(window.__fbExpenses) return window.__fbExpenses;
+  try{return JSON.parse(lsGet('expenses')||'[]');}catch(e){return [];}
+}
+function saveExp(a){
+  if(window.__fbSaveExpenses){ window.__fbSaveExpenses(a); return; }
+  ls('expenses',JSON.stringify(a));
+}
 function addExpense(){
   const d=document.getElementById('exp-desc').value.trim();
-  const a=parseFloat(document.getElementById('exp-amt').value);
-  if(!d||isNaN(a)||a<=0){alert('請填寫項目與正確金額');return;}
-  const arr=getExp(); arr.push({d:d,a:a,p:payer,id:Date.now()}); saveExp(arr);
+  const rawAmt=parseFloat(document.getElementById('exp-amt').value);
+  if(!d||isNaN(rawAmt)||rawAmt<=0){alert('請填寫項目與正確金額');return;}
+  const rate=parseFloat(lsGet('rate'))||4.7;
+  const amtJPY = curSel==='JPY' ? rawAmt : Math.round(rawAmt*rate);
+  const parts=getParticipants();
+  const arr=getExp();
+  arr.push({d:d, a:amtJPY, origA:rawAmt, cur:curSel, p:payer, parts:parts, id:Date.now()});
+  saveExp(arr);
   document.getElementById('exp-desc').value=''; document.getElementById('exp-amt').value='';
   renderExp();
 }
 function delExp(id){saveExp(getExp().filter(x=>x.id!=id)); renderExp();}
 function resetExpenses(){if(confirm('確定清除所有帳目？')){saveExp([]);renderExp();}}
+
 function renderExp(){
   const arr=getExp(); const list=document.getElementById('explist'); const sum=document.getElementById('summary');
   const colors={'奶家':'var(--coral)','Po家':'var(--aqua)','狗狗':'var(--purple)'};
   if(!arr.length){list.innerHTML='<div class="empty">還沒有帳目，新增第一筆吧！</div>';}
   else{
-    list.innerHTML=arr.slice().reverse().map(x=>`<div class="exp-item">
-      <div class="info"><div class="desc">${x.d}</div><div class="sub" style="color:${colors[x.p]}">● ${x.p} 付</div></div>
-      <div class="amt">¥${x.a.toLocaleString()}</div>
-      <button class="del" onclick="delExp(${x.id})">✕</button></div>`).join('');
+    list.innerHTML=arr.slice().reverse().map(x=>{
+      const parts=(x.parts&&x.parts.length&&x.parts.length<3) ? `・${x.parts.join('/')} 分攤` : '';
+      const origTxt = x.cur==='TWD' ? `（NT$${Math.round(x.origA).toLocaleString()}）` : '';
+      return `<div class="exp-item">
+      <div class="info"><div class="desc">${x.d}</div><div class="sub" style="color:${colors[x.p]}">● ${x.p} 付${parts}</div></div>
+      <div class="amt">¥${x.a.toLocaleString()}<div style="font-size:10.5px;color:var(--soft);font-weight:600;">${origTxt}</div></div>
+      <button class="del" onclick="delExp(${x.id})">✕</button></div>`;
+    }).join('');
   }
-  const tot=arr.reduce((s,x)=>s+x.a,0);
-  const groups=['奶家','Po家','狗狗'];
+  // paid totals
   const by={'奶家':0,'Po家':0,'狗狗':0}; arr.forEach(x=>by[x.p]=(by[x.p]||0)+x.a);
-  const per=tot/3;
-  const bal={}; groups.forEach(g=>bal[g]=by[g]-per);
+  const tot=arr.reduce((s,x)=>s+x.a,0);
+  // owed totals: split each expense only among its participants
+  const owed={'奶家':0,'Po家':0,'狗狗':0};
+  arr.forEach(x=>{
+    const parts = (x.parts&&x.parts.length) ? x.parts : ALLGROUPS;
+    const share = x.a/parts.length;
+    parts.forEach(g=>owed[g]=(owed[g]||0)+share);
+  });
+  const bal={}; ALLGROUPS.forEach(g=>bal[g]=by[g]-owed[g]);
   let settle=[];
   if(tot>0){
-    let cr=groups.map(g=>({g:g,v:bal[g]})).filter(x=>x.v>0.5).sort((a,b)=>b.v-a.v);
-    let db=groups.map(g=>({g:g,v:bal[g]})).filter(x=>x.v<-0.5).sort((a,b)=>a.v-b.v);
+    let cr=ALLGROUPS.map(g=>({g:g,v:bal[g]})).filter(x=>x.v>0.5).sort((a,b)=>b.v-a.v);
+    let db=ALLGROUPS.map(g=>({g:g,v:bal[g]})).filter(x=>x.v<-0.5).sort((a,b)=>a.v-b.v);
     let ci=0,di=0;
     while(ci<cr.length && di<db.length){
       const give=Math.min(cr[ci].v, -db[di].v);
@@ -842,16 +910,18 @@ function renderExp(){
       if(cr[ci].v<0.5)ci++; if(db[di].v>-0.5)di++;
     }
   }
+  const rate=parseFloat(lsGet('rate'))||4.7;
+  const tw = (jpy)=>'NT$'+Math.round(jpy/rate).toLocaleString();
   const settleHtml = settle.length
-    ? settle.map(s=>`<div class="settle-row"><span class="from">${s.from}</span><span class="arrow">➜</span><span class="to">${s.to}</span><span class="samt">¥${s.amt.toLocaleString()}</span></div>`).join('')
+    ? settle.map(s=>`<div class="settle-row"><span class="from">${s.from}</span><span class="arrow">➜</span><span class="to">${s.to}</span><span class="samt">¥${s.amt.toLocaleString()}<div style="font-size:11px;font-weight:700;opacity:.85;">約 ${tw(s.amt)}</div></span></div>`).join('')
     : '<div class="settle-none">目前三組打平，無需互相支付 🎉</div>';
   sum.innerHTML=`<h4>💰 結算：誰該付給誰</h4>
     <div class="settle-box">${settleHtml}</div>
-    <div class="srow" style="margin-top:12px;"><span>總花費</span><span>¥${tot.toLocaleString()}</span></div>
-    <div class="srow"><span>每組應分攤</span><span>¥${Math.round(per).toLocaleString()}</span></div>
-    <div class="srow"><span>奶家已付</span><span>¥${by['奶家'].toLocaleString()}</span></div>
-    <div class="srow"><span>Po家已付</span><span>¥${by['Po家'].toLocaleString()}</span></div>
-    <div class="srow"><span>狗狗已付</span><span>¥${by['狗狗'].toLocaleString()}</span></div>`;
+    <div class="srow" style="margin-top:12px;"><span>總花費</span><span>¥${tot.toLocaleString()}<br><span style="font-size:11.5px;opacity:.85;">約 ${tw(tot)}</span></span></div>
+    <div class="srow"><span>奶家</span><span style="text-align:right;">付 ¥${by['奶家'].toLocaleString()} · 分攤 ¥${Math.round(owed['奶家']).toLocaleString()}<br><span style="font-size:11px;opacity:.85;">付約 ${tw(by['奶家'])} · 分攤約 ${tw(owed['奶家'])}</span></span></div>
+    <div class="srow"><span>Po家</span><span style="text-align:right;">付 ¥${by['Po家'].toLocaleString()} · 分攤 ¥${Math.round(owed['Po家']).toLocaleString()}<br><span style="font-size:11px;opacity:.85;">付約 ${tw(by['Po家'])} · 分攤約 ${tw(owed['Po家'])}</span></span></div>
+    <div class="srow"><span>狗狗</span><span style="text-align:right;">付 ¥${by['狗狗'].toLocaleString()} · 分攤 ¥${Math.round(owed['狗狗']).toLocaleString()}<br><span style="font-size:11px;opacity:.85;">付約 ${tw(by['狗狗'])} · 分攤約 ${tw(owed['狗狗'])}</span></span></div>
+    <div style="font-size:10.5px;opacity:.8;margin-top:10px;text-align:center;">台幣為約略參考值（匯率 1:${rate}，可於匯率頁調整）</div>`;
 }
 
 /* ---------- reset ---------- */
@@ -887,6 +957,56 @@ function restore(){
 }
 restore();
 setInterval(tickCountdown,3600000);
+</script>
+
+<!-- ===== Firebase 即時同步 ===== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDzpZXhJOXgVd6VuG5IATjPPfbVW4ziDxg",
+  authDomain: "okinawa-trip-cfd2f.firebaseapp.com",
+  projectId: "okinawa-trip-cfd2f",
+  storageBucket: "okinawa-trip-cfd2f.firebasestorage.app",
+  messagingSenderId: "28082184251",
+  appId: "1:28082184251:web:f67339eae1b2e653bd3c1e"
+};
+
+const badge = document.getElementById('sync-dot');
+const txt = document.getElementById('sync-text');
+
+try {
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  // 共用一份帳本文件（所有人讀寫同一份）
+  const ref = doc(db, "okinawa", "expenses");
+
+  // 儲存：任何人新增/刪除都寫進雲端
+  window.__fbSaveExpenses = async function(arr){
+    window.__fbExpenses = arr;              // 本地立即更新
+    try {
+      await setDoc(ref, { items: arr, updatedAt: Date.now() });
+    } catch(e) {
+      if(txt){ txt.textContent='同步失敗（已存本機）'; badge.className='sync-dot off'; }
+      // 備援：也存本機一份
+      try{ localStorage.setItem('expenses', JSON.stringify(arr)); }catch(_){}
+    }
+  };
+
+  // 即時監聽：別人改動時自動更新畫面
+  onSnapshot(ref, (snap) => {
+    const data = snap.data();
+    window.__fbExpenses = (data && data.items) ? data.items : [];
+    if(txt){ txt.textContent='已連線・即時同步中'; badge.className='sync-dot live'; }
+    if(typeof renderExp === 'function') renderExp();
+  }, (err) => {
+    if(txt){ txt.textContent='連線失敗（改用本機儲存）'; badge.className='sync-dot off'; }
+  });
+
+} catch(e) {
+  if(txt){ txt.textContent='無法連線雲端（改用本機儲存）'; badge.className='sync-dot off'; }
+}
 </script>
 </body>
 </html>
