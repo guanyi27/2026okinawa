@@ -267,6 +267,15 @@ img{display:block;}
 .shop-card.bought{opacity:.6;} .shop-card.bought .sc-name{text-decoration:line-through;}
 .shop-card .sc-del{background:none;border:none;color:#d8cfbf;font-size:15px;cursor:pointer;padding:2px 6px;margin-left:auto;}
 .shop-card .sc-del:hover{color:var(--coral);}
+.shop-summary{margin:0 16px 12px;background:linear-gradient(135deg,var(--pink),#a8547d);color:#fff;
+  border-radius:14px;padding:14px 18px;box-shadow:var(--shadow-sm);display:none;}
+.shop-summary.on{display:block;}
+.shop-summary h4{margin:0 0 8px;font-size:14px;font-weight:800;}
+.shop-summary .ss-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;
+  border-bottom:1px solid rgba(255,255,255,.18);}
+.shop-summary .ss-row:last-child{border:none;}
+.shop-card .sc-price{font-size:13px;font-weight:800;color:var(--coral-d);margin-top:3px;}
+.shop-card .sc-price .cur-tag{font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:5px;margin-left:3px;vertical-align:middle;}
 .cl-sub{margin:-4px 16px 10px;font-size:12px;color:var(--soft);}
 
 /* costco product cards */
@@ -761,13 +770,24 @@ img{display:block;}
     <textarea id="shop-desc" placeholder="備註說明（選填，例：要大盒的、紅色包裝）"></textarea>
     <div class="for-label">幫誰買？</div>
     <input id="shop-for" type="text" placeholder="例：媽媽、阿姨、同事小王">
-    <div class="photo-area" id="shop-photo-area" onclick="document.getElementById('shop-file').click()">
-      📷 點這裡拍照或上傳商品圖片（選填）
-      <input type="file" id="shop-file" accept="image/*" capture="environment" onchange="previewShopPhoto(this)">
+    <div class="for-label">預估金額（選填，買到後可修改）</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <div class="cur-toggle" id="shop-cur-toggle" style="flex:0 0 auto;width:140px;margin:0;">
+        <button class="on" data-shopcur="JPY" onclick="pickShopCur(this)">¥ 日圓</button>
+        <button data-shopcur="TWD" onclick="pickShopCur(this)">NT$ 台幣</button>
+      </div>
+      <input id="shop-price" type="number" inputmode="decimal" placeholder="金額" style="flex:1;">
+    </div>
+    <div class="photo-area" id="shop-photo-area">
+      <label style="display:block;cursor:pointer;">
+        📷 點這裡拍照或從相簿選取圖片（選填）
+        <input type="file" id="shop-file" accept="image/*" onchange="previewShopPhoto(this)" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+      </label>
       <img id="shop-preview" src="" style="display:none;">
     </div>
     <button class="addbtn" onclick="addShopItem()">＋ 新增代買項目</button>
   </div>
+  <div class="shop-summary" id="shop-summary"></div>
   <div class="shop-list" id="shop-list"></div>
   <button class="reset-link" onclick="resetShop()">清除所有代買紀錄</button>
   <div style="height:20px;"></div>
@@ -1011,10 +1031,15 @@ function renderExp(){
   else{
     list.innerHTML=arr.slice().reverse().map(x=>{
       const parts=(x.parts&&x.parts.length&&x.parts.length<3) ? `・${x.parts.join('/')} 分攤` : '';
-      const origTxt = x.cur==='TWD' ? `（NT$${Math.round(x.origA).toLocaleString()}）` : '';
+      const isJPY = x.cur!=='TWD';
+      const curBadge = isJPY
+        ? '<span style="display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:7px;background:#e6f5f3;color:var(--aqua-d);margin-left:4px;">日圓</span>'
+        : '<span style="display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:7px;background:#fff0dc;color:#b06a12;margin-left:4px;">台幣</span>';
+      const amtMain = isJPY ? `¥${x.a.toLocaleString()}` : `NT$${Math.round(x.origA).toLocaleString()}`;
+      const amtSub = isJPY ? '' : `<div style="font-size:10.5px;color:var(--soft);font-weight:600;">≈ ¥${x.a.toLocaleString()}</div>`;
       return `<div class="exp-item">
-      <div class="info"><div class="desc">${x.d}</div><div class="sub" style="color:${colors[x.p]}">● ${x.p} 付${parts}</div></div>
-      <div class="amt">¥${x.a.toLocaleString()}<div style="font-size:10.5px;color:var(--soft);font-weight:600;">${origTxt}</div></div>
+      <div class="info"><div class="desc">${x.d}${curBadge}</div><div class="sub" style="color:${colors[x.p]}">● ${x.p} 付${parts}</div></div>
+      <div class="amt">${amtMain}${amtSub}</div>
       <button class="del" onclick="delExp(${x.id})">✕</button></div>`;
     }).join('');
   }
@@ -1062,16 +1087,14 @@ function renderExp(){
 
 /* ---------- personal shopping / buy-for-others ---------- */
 let shopPhotoData=null;
+let shopCur='JPY';
+function pickShopCur(el){
+  document.querySelectorAll('[data-shopcur]').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on'); shopCur=el.dataset.shopcur;
+  document.getElementById('shop-price').placeholder = shopCur==='JPY' ? '金額（日圓）' : '金額（台幣）';
+}
 function previewShopPhoto(inp){
   const file=inp.files[0]; if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(e){
-    shopPhotoData=e.target.result;
-    const img=document.getElementById('shop-preview');
-    img.src=shopPhotoData; img.style.display='block';
-    document.getElementById('shop-photo-area').querySelector('input[type=file]').style.pointerEvents='none';
-  };
-  // compress: resize to max 600px to save localStorage space
   const canvas=document.createElement('canvas');
   const ctx=canvas.getContext('2d');
   const img=new Image();
@@ -1093,13 +1116,13 @@ function addShopItem(){
   if(!name){alert('請填寫品名');return;}
   const desc=document.getElementById('shop-desc').value.trim();
   const forWho=document.getElementById('shop-for').value.trim()||'未指定';
-  const item={name:name, desc:desc, forWho:forWho, photo:shopPhotoData||'', bought:false, id:Date.now()};
+  const priceVal=parseFloat(document.getElementById('shop-price').value)||0;
+  const item={name:name, desc:desc, forWho:forWho, photo:shopPhotoData||'', price:priceVal, priceCur:shopCur, bought:false, id:Date.now()};
   const arr=getShopItems(); arr.push(item); saveShopItems(arr);
-  // clear form
   document.getElementById('shop-name').value=''; document.getElementById('shop-desc').value='';
-  document.getElementById('shop-for').value=''; shopPhotoData=null;
-  document.getElementById('shop-preview').style.display='none';
-  document.getElementById('shop-preview').src='';
+  document.getElementById('shop-for').value=''; document.getElementById('shop-price').value='';
+  shopPhotoData=null;
+  const prev=document.getElementById('shop-preview'); prev.style.display='none'; prev.src='';
   renderShop();
 }
 function toggleShop(id){
@@ -1110,22 +1133,48 @@ function delShop(id){
 }
 function resetShop(){if(confirm('確定清除所有代買紀錄？')){saveShopItems([]);renderShop();}}
 function renderShop(){
-  const arr=getShopItems(); const list=document.getElementById('shop-list');
-  if(!arr.length){list.innerHTML='<div class="empty">還沒有代買項目，新增第一筆吧！</div>';return;}
+  const arr=getShopItems(); const list=document.getElementById('shop-list'); const sumEl=document.getElementById('shop-summary');
+  if(!arr.length){
+    list.innerHTML='<div class="empty">還沒有代買項目，新增第一筆吧！</div>';
+    sumEl.classList.remove('on'); return;
+  }
+  const rate=parseFloat(lsGet('rate'))||4.7;
   list.innerHTML=arr.map(x=>{
     const bought=x.bought?'bought':'';
     const chkOn=x.bought?'on':'';
     const imgHtml=x.photo?`<img class="sc-img" src="${x.photo}" onclick="openImgModal('${x.photo}','${x.name}')">`:'';
     const descHtml=x.desc?`<div class="sc-desc">${x.desc}</div>`:'';
+    let priceHtml='';
+    if(x.price>0){
+      const isJPY=(x.priceCur!=='TWD');
+      const curTag=isJPY?'<span class="cur-tag" style="background:#e6f5f3;color:var(--aqua-d);">日圓</span>':'<span class="cur-tag" style="background:#fff0dc;color:#b06a12;">台幣</span>';
+      const display=isJPY?`¥${x.price.toLocaleString()}`:`NT$${x.price.toLocaleString()}`;
+      priceHtml=`<div class="sc-price">${display}${curTag}</div>`;
+    }
     return `<div class="shop-card ${bought}">
       <div class="sc-top">
         ${imgHtml}
-        <div class="sc-info"><div class="sc-name">${x.name}</div>${descHtml}<span class="sc-for">👤 幫 ${x.forWho} 買</span></div>
+        <div class="sc-info"><div class="sc-name">${x.name}</div>${descHtml}${priceHtml}<span class="sc-for">👤 幫 ${x.forWho} 買</span></div>
         <div class="sc-chk ${chkOn}" onclick="toggleShop(${x.id})">✓</div>
         <button class="sc-del" onclick="delShop(${x.id})">✕</button>
       </div>
     </div>`;
   }).join('');
+  // summary stats
+  let totalJPY=0; let boughtJPY=0; let totalCount=arr.length; let boughtCount=arr.filter(x=>x.bought).length;
+  arr.forEach(x=>{
+    if(x.price>0){
+      const jpy=(x.priceCur==='TWD')? Math.round(x.price*rate) : x.price;
+      totalJPY+=jpy;
+      if(x.bought) boughtJPY+=jpy;
+    }
+  });
+  const tw=(v)=>'NT$'+Math.round(v/rate).toLocaleString();
+  sumEl.classList.add('on');
+  sumEl.innerHTML=`<h4>🛒 代買統計</h4>
+    <div class="ss-row"><span>項目數</span><span>${boughtCount} / ${totalCount} 已購買</span></div>
+    <div class="ss-row"><span>預估總金額</span><span>¥${totalJPY.toLocaleString()}（約 ${tw(totalJPY)}）</span></div>
+    <div class="ss-row"><span>已購買金額</span><span>¥${boughtJPY.toLocaleString()}（約 ${tw(boughtJPY)}）</span></div>`;
 }
 
 /* ---------- reset ---------- */
