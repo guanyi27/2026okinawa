@@ -1139,7 +1139,7 @@ function addShopItem(){
   if(!name){alert('請填寫品名');return;}
   const desc=document.getElementById('shop-desc').value.trim();
   const forWho=document.getElementById('shop-for').value.trim()||'未指定';
-  const item={name:name, desc:desc, forWho:forWho, photo:shopPhotoData||'', price:0, priceCur:'JPY', bought:false, id:Date.now()};
+  const item={name:name, desc:desc, forWho:forWho, photo:shopPhotoData||'', price:0, priceCur:'JPY', bought:false, id:(Date.now()+'_'+Math.random().toString(36).slice(2,8))};
   const arr=getShopItems(); arr.push(item); saveShopItems(arr);
   document.getElementById('shop-name').value=''; document.getElementById('shop-desc').value='';
   document.getElementById('shop-for').value='';
@@ -1148,7 +1148,7 @@ function addShopItem(){
   renderShop();
 }
 function toggleShop(id){
-  const arr=getShopItems(); const it=arr.find(x=>x.id===id);
+  const arr=getShopItems(); const it=arr.find(x=>String(x.id)===String(id));
   if(!it) return;
   if(!it.bought){
     // marking as bought -> open price modal
@@ -1179,7 +1179,7 @@ function submitPrice(){
   const val=Math.round(parseFloat(raw));
   if(!raw||isNaN(val)||val<=0){alert('請輸入正確金額');return;}
   const cur=document.getElementById('pm-cur').value;
-  const arr=getShopItems(); const it=arr.find(x=>x.id===pendingShopId);
+  const arr=getShopItems(); const it=arr.find(x=>String(x.id)===String(pendingShopId));
   if(it){ it.bought=true; it.price=val; it.priceCur=cur; }
   saveShopItems(arr);
   document.getElementById('pricemodal').classList.remove('open');
@@ -1187,11 +1187,11 @@ function submitPrice(){
   renderShop();
 }
 function editPrice(id){
-  const arr=getShopItems(); const it=arr.find(x=>x.id===id);
+  const arr=getShopItems(); const it=arr.find(x=>String(x.id)===String(id));
   if(it) openPriceModal(id, it.name);
 }
 function delShop(id){
-  const arr=getShopItems().filter(x=>x.id!==id); saveShopItems(arr); renderShop();
+  const arr=getShopItems().filter(x=>String(x.id)!==String(id)); saveShopItems(arr); renderShop();
 }
 function resetShop(){if(confirm('確定清除所有代買紀錄？')){saveShopItems([]);renderShop();}}
 function renderShop(){
@@ -1212,7 +1212,7 @@ function renderShop(){
       const isJPY=(x.priceCur!=='TWD');
       const curTag=isJPY?'<span class="cur-tag" style="background:#e6f5f3;color:var(--aqua-d);">日圓</span>':'<span class="cur-tag" style="background:#fff0dc;color:#b06a12;">台幣</span>';
       const display=isJPY?`¥${x.price.toLocaleString()}`:`NT$${x.price.toLocaleString()}`;
-      priceHtml=`<div class="sc-price">${display}${curTag} <span style="font-size:10px;color:var(--soft);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();editPrice(${x.id})">修改</span></div>`;
+      priceHtml=`<div class="sc-price">${display}${curTag} <span style="font-size:10px;color:var(--soft);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();editPrice('${x.id}')">修改</span></div>`;
     }
     return `<div class="shop-card ${boughtCls}">
       <div class="sc-top">
@@ -1221,8 +1221,8 @@ function renderShop(){
           <div class="sc-name">${x.name}</div>${descHtml}${priceHtml}
           <span class="sc-for">👤 幫 ${x.forWho} 買</span>
         </div>
-        <div class="sc-chk ${chkOn}" onclick="toggleShop(${x.id})">✓</div>
-        <button class="sc-del" onclick="delShop(${x.id})">✕</button>
+        <div class="sc-chk ${chkOn}" onclick="toggleShop('${x.id}')">✓</div>
+        <button class="sc-del" onclick="delShop('${x.id}')">✕</button>
       </div>
     </div>`;
   }).join('');
