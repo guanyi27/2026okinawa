@@ -324,6 +324,9 @@ img{display:block;}
 .modal .close{position:absolute;top:18px;right:20px;width:42px;height:42px;border-radius:50%;border:none;
   background:rgba(255,255,255,.2);color:#fff;font-size:22px;cursor:pointer;}
 .modal .hint{color:rgba(255,255,255,.6);font-size:11.5px;margin-top:10px;}
+.price-modal-box{background:#fff;border-radius:20px;padding:24px;width:90%;max-width:340px;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);animation:fade .2s ease;}
+.price-modal-box h3{margin:0;font-size:18px;font-weight:800;color:var(--ink);}
 
 /* currency toggle (split page) */
 .cur-toggle{display:flex;background:var(--line);border-radius:11px;padding:3px;margin-bottom:10px;}
@@ -668,6 +671,25 @@ img{display:block;}
     <img id="modal-img" src="" alt="">
     <div class="cap" id="modal-cap"></div>
     <div class="hint">點任意處關閉</div>
+  </div>
+</div>
+
+<!-- price input modal -->
+<div class="modal" id="pricemodal" onclick="closePriceModal(event)">
+  <div class="price-modal-box" onclick="event.stopPropagation();">
+    <h3 id="pm-title">💰 記錄購買金額</h3>
+    <p id="pm-name" style="font-size:13px;color:var(--soft);margin:4px 0 14px;"></p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <select id="pm-cur" style="padding:10px;border:1.5px solid #ddd;border-radius:10px;font-size:14px;font-weight:700;background:#fff;">
+        <option value="JPY">¥ 日圓</option>
+        <option value="TWD">NT$ 台幣</option>
+      </select>
+      <input id="pm-val" type="number" inputmode="decimal" placeholder="實際金額" style="flex:1;padding:10px 14px;border:1.5px solid #ddd;border-radius:10px;font-size:16px;font-weight:800;">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="closePriceModal(null,true)" style="flex:1;padding:12px;border:1.5px solid #ddd;border-radius:10px;background:#fff;font-size:14px;font-weight:700;color:var(--soft);cursor:pointer;">取消</button>
+      <button onclick="submitPrice()" style="flex:1;padding:12px;border:none;border-radius:10px;background:var(--coral);color:#fff;font-size:14px;font-weight:800;cursor:pointer;">確認儲存</button>
+    </div>
   </div>
 </div>
 
@@ -1126,7 +1148,46 @@ function addShopItem(){
   renderShop();
 }
 function toggleShop(id){
-  const arr=getShopItems(); const it=arr.find(x=>x.id===id); if(it)it.bought=!it.bought; saveShopItems(arr); renderShop();
+  const arr=getShopItems(); const it=arr.find(x=>x.id===id);
+  if(!it) return;
+  if(!it.bought){
+    // marking as bought -> open price modal
+    openPriceModal(id, it.name);
+  } else {
+    // unmarking
+    it.bought=false; it.price=0; it.priceCur='JPY';
+    saveShopItems(arr); renderShop();
+  }
+}
+let pendingShopId=null;
+function openPriceModal(id, name){
+  pendingShopId=id;
+  document.getElementById('pm-name').textContent=name;
+  document.getElementById('pm-val').value='';
+  document.getElementById('pm-cur').value='JPY';
+  document.getElementById('pricemodal').classList.add('open');
+  setTimeout(()=>document.getElementById('pm-val').focus(), 200);
+}
+function closePriceModal(e, force){
+  if(force || (e && e.target.id==='pricemodal')){
+    document.getElementById('pricemodal').classList.remove('open');
+    pendingShopId=null;
+  }
+}
+function submitPrice(){
+  const val=parseFloat(document.getElementById('pm-val').value);
+  if(isNaN(val)||val<=0){alert('請輸入正確金額');return;}
+  const cur=document.getElementById('pm-cur').value;
+  const arr=getShopItems(); const it=arr.find(x=>x.id===pendingShopId);
+  if(it){ it.bought=true; it.price=val; it.priceCur=cur; }
+  saveShopItems(arr);
+  document.getElementById('pricemodal').classList.remove('open');
+  pendingShopId=null;
+  renderShop();
+}
+function editPrice(id){
+  const arr=getShopItems(); const it=arr.find(x=>x.id===id);
+  if(it) openPriceModal(id, it.name);
 }
 function delShop(id){
   const arr=getShopItems().filter(x=>x.id!==id); saveShopItems(arr); renderShop();
@@ -1142,39 +1203,15 @@ function renderShop(){
   list.innerHTML=arr.map(x=>{
     const bought=x.bought;
     const boughtCls=bought?'bought':'';
+    const chkOn=bought?'on':'';
     const imgHtml=x.photo?`<img class="sc-img" src="${x.photo}" onclick="openImgModal('${x.photo}','${x.name}')">`:'';
     const descHtml=x.desc?`<div class="sc-desc">${x.desc}</div>`:'';
-    // price display (only if recorded)
     let priceHtml='';
     if(x.price>0){
       const isJPY=(x.priceCur!=='TWD');
       const curTag=isJPY?'<span class="cur-tag" style="background:#e6f5f3;color:var(--aqua-d);">日圓</span>':'<span class="cur-tag" style="background:#fff0dc;color:#b06a12;">台幣</span>';
       const display=isJPY?`¥${x.price.toLocaleString()}`:`NT$${x.price.toLocaleString()}`;
-      priceHtml=`<div class="sc-price">${display}${curTag}</div>`;
-    }
-    // action buttons
-    let actionsHtml='';
-    if(!bought){
-      actionsHtml=`<div class="sc-actions">
-        <button class="sc-btn buy" onclick="showPriceForm(${x.id})">💰 已買到・記錄金額</button>
-      </div>
-      <div class="sc-price-form" id="pf-${x.id}" style="display:none;">
-        <select id="pfc-${x.id}"><option value="JPY">¥ 日圓</option><option value="TWD">NT$ 台幣</option></select>
-        <input type="number" inputmode="decimal" id="pfv-${x.id}" placeholder="實際金額">
-        <button onclick="confirmBuy(${x.id})">確認</button>
-      </div>`;
-    } else if(bought && x.price===0){
-      actionsHtml=`<div class="sc-actions">
-        <button class="sc-btn rec" onclick="showPriceForm(${x.id})">💰 補記金額</button>
-        <button class="sc-btn" onclick="toggleShop(${x.id})">↩ 改為未買</button>
-      </div>
-      <div class="sc-price-form" id="pf-${x.id}" style="display:none;">
-        <select id="pfc-${x.id}"><option value="JPY">¥ 日圓</option><option value="TWD">NT$ 台幣</option></select>
-        <input type="number" inputmode="decimal" id="pfv-${x.id}" placeholder="實際金額">
-        <button onclick="confirmBuy(${x.id})">確認</button>
-      </div>`;
-    } else {
-      actionsHtml=`<div class="sc-actions"><button class="sc-btn" onclick="toggleShop(${x.id})">↩ 改為未買</button></div>`;
+      priceHtml=`<div class="sc-price">${display}${curTag} <span style="font-size:10px;color:var(--soft);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();editPrice(${x.id})">修改</span></div>`;
     }
     return `<div class="shop-card ${boughtCls}">
       <div class="sc-top">
@@ -1182,13 +1219,12 @@ function renderShop(){
         <div class="sc-info">
           <div class="sc-name">${x.name}</div>${descHtml}${priceHtml}
           <span class="sc-for">👤 幫 ${x.forWho} 買</span>
-          ${actionsHtml}
         </div>
+        <div class="sc-chk ${chkOn}" onclick="toggleShop(${x.id})">✓</div>
         <button class="sc-del" onclick="delShop(${x.id})">✕</button>
       </div>
     </div>`;
   }).join('');
-  // summary
   let totalJPY=0; let boughtJPY=0; let totalCount=arr.length; let boughtCount=arr.filter(x=>x.bought).length;
   arr.forEach(x=>{
     if(x.price>0){
@@ -1203,20 +1239,6 @@ function renderShop(){
     <div class="ss-row"><span>項目數</span><span>${boughtCount} / ${totalCount} 已購買</span></div>
     <div class="ss-row"><span>已花費金額</span><span>¥${boughtJPY.toLocaleString()}（約 ${tw(boughtJPY)}）</span></div>`;
 }
-function showPriceForm(id){
-  const el=document.getElementById('pf-'+id);
-  el.style.display=el.style.display==='none'?'flex':'none';
-  if(el.style.display==='flex'){ const inp=document.getElementById('pfv-'+id); inp.focus(); }
-}
-function confirmBuy(id){
-  const cur=document.getElementById('pfc-'+id).value;
-  const val=parseFloat(document.getElementById('pfv-'+id).value);
-  if(isNaN(val)||val<=0){alert('請輸入正確金額');return;}
-  const arr=getShopItems(); const it=arr.find(x=>x.id===id);
-  if(it){ it.bought=true; it.price=val; it.priceCur=cur; }
-  saveShopItems(arr); renderShop();
-}
-
 
 /* ---------- reset ---------- */
 function resetPack(){
